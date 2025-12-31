@@ -166,7 +166,7 @@ ADDITIONAL_AAVE_ORACLE_TOKENS = {
 AAVE_ORACLE_TOKENS.update(ADDITIONAL_AAVE_ORACLE_TOKENS)
 
 # ============================================================================
-# AAVE CAPO (Capped Price Oracle) Adapters - ALL Ethereum Mainnet Deployments
+# AAVE CAPO (Correlated Assets Price Oracle) Adapters - ALL Ethereum Mainnet Deployments
 # Diese Contracts enthalten die offiziellen CAPO Parameter (snapshot, growth rate)
 # Source: Queried from Aave V3 Oracle (0x54586bE62E3c3580375aE3723C145253060Ca0C2)
 # ALL 7 CAPO adapters currently used by Aave V3 on Ethereum mainnet

@@ -38,11 +38,11 @@ Every liquidation is enriched with USD values at the **exact liquidation block**
 **Fallback Chain:**
 1. **Aave V3 Oracle** - All Aave-listed assets (authoritative live protocol state)
 2. **Chainlink Direct USD Feed** - Standard tokens (ETH, WBTC, USDC, etc.)
-3. **CAPO Protection** - Aave's Capped Price Oracle (blockgenau from deployed contracts)
+3. **CAPO Protection** - Aave's Correlated Assets Price Oracle (blockgenau from deployed contracts)
 4. **Raw LSD Calculation** - Exchange rate × underlying price (fallback when no CAPO)
 5. **Stablecoins** - $1.00 default
 
-**CAPO (Capped Price Oracle):**
+**CAPO (Correlated Assets Price Oracle):**
 - **Generic cap mechanism** for LSDs, stablecoins, and PT tokens
 - Limits exchange rate growth (e.g., 9.68% yearly max for wstETH)
 - Formula: `max_ratio = snapshot + (growth × elapsed_time)`

@@ -703,7 +703,7 @@ def get_aave_asset_price(symbol: str, asset_address: str, block_number: int,
                     logger.warning("[Price] All %d retries failed for %s @ %s", 
                                   MAX_PRICE_RETRIES, feed_to_use, block_number)
 
-    # PRIORITY 3: CAPO Protection (Aave's Capped Price Oracle)
+    # PRIORITY 3: CAPO Protection (Aave's Correlated Assets Price Oracle)
     # Applies rate cap protection using deployed CAPO contracts
     # Works for LSDs (wstETH, rETH, cbETH), stablecoins (sUSDe, sDAI), and other capped assets
     # Reads CAPO parameters blockgenau from Aave contracts
