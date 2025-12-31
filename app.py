@@ -1883,7 +1883,14 @@ def api_dashboard_summary():
 
 @app.route('/api/wallet/positions')
 def api_wallet_positions():
-    """Aggregierte DeFi-Positionen für eine Wallet-Adresse (Uniswap V2/V3; Aave optional)."""
+    """Aggregierte DeFi-Positionen für eine Wallet-Adresse (Ethereum Mainnet only)."""
+    # Only available on Ethereum Mainnet
+    if ACTIVE_CHAIN != 'ethereum':
+        return jsonify({
+            "error": "Wallet position analysis is only available on Ethereum Mainnet",
+            "current_chain": ACTIVE_CHAIN
+        }), 400
+    
     address = (request.args.get('address') or '').strip()
     if not address.startswith('0x') or len(address) != 42:
         return jsonify({"error": "invalid address"}), 400

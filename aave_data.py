@@ -17,16 +17,9 @@ class ChainlinkPriceService:
     def __init__(self):
         self._cache = {}
         self._cache_time = {}
-        self._fetcher = None
-        
-    def _get_fetcher(self):
-        """Lazy init Chainlink fetcher"""
-        if self._fetcher is None:
-            self._fetcher = ChainlinkPriceFetcher()
-        return self._fetcher
         
     def get_multiple_prices(self, symbols):
-        """Fetch current prices from Chainlink with 30s cache"""
+        """Fetch current prices using Aave Oracle (fast, authoritative)"""
         now = time.time()
         prices = {}
         
@@ -36,8 +29,20 @@ class ChainlinkPriceService:
                 logger.warning("Web3 not connected, using cached prices")
                 return {sym: self._cache.get(sym, 1.0) for sym in symbols}
             
-            current_block = w3.eth.block_number
-            fetcher = self._get_fetcher()
+            # Aave Oracle - single contract call per asset (fast!)
+            from chainlink_price_utils import AAVE_V3_ORACLE, AAVE_ORACLE_ABI, AAVE_ORACLE_BASE_UNIT
+            oracle = w3.eth.contract(address=AAVE_V3_ORACLE, abi=AAVE_ORACLE_ABI)
+            
+            # Token addresses for Mainnet
+            token_addresses = {
+                "WETH": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+                "ETH": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # ETH = WETH
+                "USDC": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                "USDT": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+                "DAI": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+                "WBTC": "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+                "BTC": "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"  # BTC = WBTC
+            }
             
             for symbol in symbols:
                 # Check cache (30s TTL)
@@ -45,18 +50,27 @@ class ChainlinkPriceService:
                     prices[symbol] = self._cache[symbol]
                     continue
                 
-                # Fetch from Chainlink at current block
+                # Fetch from Aave Oracle
                 try:
-                    price = fetcher.get_price(symbol, current_block)
-                    if price and price > 0:
-                        self._cache[symbol] = price
+                    token_addr = token_addresses.get(symbol)
+                    if not token_addr:
+                        logger.warning(f"Unknown token: {symbol}")
+                        prices[symbol] = 1.0
+                        continue
+                        
+                    price_raw = oracle.functions.getAssetPrice(token_addr).call()
+                    
+                    if price_raw and price_raw > 0:
+                        price_usd = price_raw / AAVE_ORACLE_BASE_UNIT
+                        self._cache[symbol] = price_usd
                         self._cache_time[symbol] = now
-                        prices[symbol] = price
+                        prices[symbol] = price_usd
+                        logger.debug(f"[Aave Oracle] {symbol}: ${price_usd:.2f}")
                     else:
-                        # Fallback to cached or 1.0
                         prices[symbol] = self._cache.get(symbol, 1.0)
+                        logger.warning(f"No price for {symbol}, using fallback")
                 except Exception as e:
-                    logger.debug("Chainlink price fetch failed for %s: %s", symbol, str(e)[:50])
+                    logger.warning("Aave Oracle fetch failed for %s: %s", symbol, str(e)[:100])
                     prices[symbol] = self._cache.get(symbol, 1.0)
                     
         except Exception as e:

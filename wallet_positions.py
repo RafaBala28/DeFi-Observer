@@ -510,14 +510,25 @@ def _calculate_v3_amounts(liquidity: int, sqrt_price_x96: int, tick_lower: int, 
 
 def _get_aave_user_positions(w3: Web3, owner: str) -> List[Dict[str, Any]]:
     pool = w3.eth.contract(address=AAVE_V3_POOL, abi=AAVE_V3_POOL_ABI)
+    
+    # OPTIMIZATION: Quick check if user has any positions
     try:
-        reserves: List[str] = pool.functions.getReservesList().call()
+        account_data = pool.functions.getUserAccountData(owner).call()
+        total_collateral = account_data[0]  # in base currency (USD, 8 decimals)
+        total_debt = account_data[1]
+        
+        # If no collateral and no debt, skip all asset scanning
+        if total_collateral == 0 and total_debt == 0:
+            return []
     except Exception:
-        # fallback to common assets
-        reserves = [WETH, USDC, USDT, DAI, WBTC]
+        pass  # Continue with full scan if getUserAccountData fails
+    
+    # OPTIMIZATION: Only scan top assets (faster)
+    # Most users only have positions in major assets
+    top_assets = [WETH, USDC, USDT, DAI, WBTC]
 
     positions: List[Dict[str, Any]] = []
-    for asset in reserves:
+    for asset in top_assets:
         try:
             rd = pool.functions.getReserveData(asset).call()
             a_token = rd[8]
@@ -530,18 +541,15 @@ def _get_aave_user_positions(w3: Web3, owner: str) -> List[Dict[str, Any]]:
             sd = w3.eth.contract(address=s_debt, abi=ERC20_ABI)
             vd = w3.eth.contract(address=v_debt, abi=ERC20_ABI)
 
+            # OPTIMIZATION: Batch check - only call if needed
             dep = float(at.functions.balanceOf(owner).call()) / (10 ** dec)
-            if dep == 0:
-                # if no deposit and also no debt, skip early to reduce calls
-                st = float(sd.functions.balanceOf(owner).call()) / (10 ** dec)
-                vr = float(vd.functions.balanceOf(owner).call()) / (10 ** dec)
-                debt = st + vr
-                if debt == 0:
-                    continue
-            else:
-                st = float(sd.functions.balanceOf(owner).call()) / (10 ** dec)
-                vr = float(vd.functions.balanceOf(owner).call()) / (10 ** dec)
-                debt = st + vr
+            st = float(sd.functions.balanceOf(owner).call()) / (10 ** dec)
+            vr = float(vd.functions.balanceOf(owner).call()) / (10 ** dec)
+            debt = st + vr
+            
+            # Skip if no position
+            if dep == 0 and debt == 0:
+                continue
 
             price = _get_simple_price(sym)
             pos = {
@@ -619,46 +627,13 @@ def _get_uniswap_v3_positions(w3: Web3, owner: str) -> List[Dict[str, Any]]:
         if balance == 0:
             return []
         
-        # Find token IDs via Transfer events (scan last 200k blocks in 1k chunks)
-        # This takes ~12-15 seconds but finds positions from the last ~30 days
-        current_block = w3.eth.block_number
-        start_block = max(12369621, current_block - 200000)  # Uniswap V3 deploy or last 200k
-        
-        token_ids = set()
-        transfer_topic = w3.keccak(text="Transfer(address,address,uint256)")
-        owner_padded = '0x' + '0' * 24 + owner[2:].lower()  # Pad to 32 bytes
-        
-        logger.info(f"🔍 Scanning Uniswap V3: blocks {start_block} to {current_block} (~{(current_block-start_block)//1000} chunks)")
-        
-        # Scan in 1000-block chunks with delay to avoid rate limits
-        for chunk_start in range(start_block, current_block + 1, 1000):
-            chunk_end = min(chunk_start + 999, current_block)
-            
-            try:
-                # Find Transfer TO owner
-                logs = w3.eth.get_logs({
-                    'address': NFPM_ADDRESS,
-                    'fromBlock': chunk_start,
-                    'toBlock': chunk_end,
-                    'topics': [transfer_topic, None, owner_padded]
-                })
-                
-                for log in logs:
-                    token_id = int(log['topics'][3].hex(), 16)
-                    token_ids.add(token_id)
-                
-                # Small delay to avoid rate limits
-                time.sleep(0.05)
-                
-            except Exception as e:
-                logger.warning(f"⚠️ Error scanning blocks {chunk_start}-{chunk_end}: {e}")
-                time.sleep(0.2)  # Longer delay on error
-                continue
-        
-        logger.info(f"✅ Found {len(token_ids)} potential token IDs")
-        
-        # Don't show positions - return empty
-        return []
+        # DISABLED: Scanning is too slow for real-time wallet analysis
+        # Instead, return a message that V3 positions require separate analysis
+        logger.info(f"⚡ Uniswap V3 scanning skipped (balance: {balance} NFTs) - too slow for live wallet connect")
+        return [{
+            "message": f"Wallet has {balance} Uniswap V3 position(s)",
+            "note": "V3 position scanning is disabled for performance. Use dedicated position analysis instead."
+        }]
         
     except Exception as e:
         logger.error(f"❌ Error fetching Uniswap V3 positions: {e}")
@@ -666,8 +641,13 @@ def _get_uniswap_v3_positions(w3: Web3, owner: str) -> List[Dict[str, Any]]:
 
 
 def get_wallet_positions(address: str) -> Dict[str, Any]:
-    """Aggregate simple DeFi positions for a wallet (Uniswap V2 LP ETH/USDC and Uniswap V3 NFTs).
+    """Aggregate DeFi positions for a wallet (Ethereum Mainnet ONLY).
     Returns a stable JSON structure for frontend rendering.
+    
+    Note: This function is designed for Ethereum Mainnet only:
+    - Uniswap V2 ETH/USDC pool
+    - Uniswap V3 positions
+    - Aave V3 positions
     """
     if not address or not address.startswith("0x") or len(address) != 42:
         raise ValueError("invalid address")
@@ -675,6 +655,18 @@ def get_wallet_positions(address: str) -> Dict[str, Any]:
     w3 = _connect()
     if not w3:
         return {"address": address, "protocols": [], "error": "web3_connection_failed"}
+    
+    # Verify we're on Ethereum Mainnet (chain_id = 1)
+    try:
+        chain_id = w3.eth.chain_id
+        if chain_id != 1:
+            return {
+                "address": address, 
+                "protocols": [], 
+                "error": f"Wallet analysis only available on Ethereum Mainnet (current chain_id: {chain_id})"
+            }
+    except Exception:
+        pass  # Continue if chain_id check fails
 
     address = Web3.to_checksum_address(address)
 
@@ -693,10 +685,22 @@ def get_wallet_positions(address: str) -> Dict[str, Any]:
     # Aave V3 user balances (deposits/borrows)
     aave_pos = _get_aave_user_positions(w3, address)
     if aave_pos:
+        # Get Health Factor from Aave Pool
+        pool = w3.eth.contract(address=AAVE_V3_POOL, abi=AAVE_V3_POOL_ABI)
+        try:
+            account_data = pool.functions.getUserAccountData(address).call()
+            # getUserAccountData returns: (totalCollateralBase, totalDebtBase, availableBorrowsBase, 
+            #                              currentLiquidationThreshold, ltv, healthFactor)
+            health_factor = float(account_data[5]) / 1e18  # Health factor has 18 decimals
+        except Exception as e:
+            logger.warning(f"Failed to get health factor: {e}")
+            health_factor = None
+            
         totals = {
             "supplied_usd": sum(p.get("supplied_usd", 0) for p in aave_pos),
             "borrowed_usd": sum(p.get("borrowed_usd", 0) for p in aave_pos),
             "net_usd": sum(p.get("net_usd", 0) for p in aave_pos),
+            "health_factor": health_factor,
         }
         protocols.append({"protocol": "Aave V3", "positions": aave_pos, "totals": totals})
 

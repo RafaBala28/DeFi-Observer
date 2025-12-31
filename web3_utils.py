@@ -176,8 +176,26 @@ class ProviderManager:
     def get_web3(self, base_timeout: int = 10, force_new: bool = False, sticky: bool = False) -> Optional[Web3]:
         global _current_provider_url
         
-        if sticky and not force_new and self._sticky and self._sticky[1].is_connected():
-            return self._sticky[1]
+        # Check if sticky connection is healthy - force reconnect if too many errors
+        if sticky and not force_new and self._sticky:
+            idx, cached_w3 = self._sticky
+            provider = self.providers[idx]
+            
+            # Get real-time error rate from global tracking
+            success = _rpc_call_success[provider.url]
+            errors = _rpc_call_errors[provider.url]
+            total_calls = success + errors
+            
+            # Force new connection if error rate > 10% and we have more than 50 calls
+            error_rate = errors / total_calls if total_calls > 0 else 0
+            if total_calls > 50 and error_rate > 0.10:
+                logger.warning(
+                    "Sticky provider %s has high error rate %.1f%% (%d/%d) - switching provider",
+                    provider.url, error_rate * 100, errors, total_calls
+                )
+                self._sticky = None  # Clear sticky cache to force provider rotation
+            elif cached_w3.is_connected():
+                return cached_w3
 
         if not self.providers:
             logger.error("No RPC providers configured for chain %s", self.chain_name)

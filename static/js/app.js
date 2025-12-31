@@ -1028,14 +1028,14 @@ async function connectWallet() {
 	const btnText = $('#walletBtnText');
 	if(!btn || !btnText) return;
 	
-	if(typeof window.ethereum === 'undefined') {
-		showNotification('MetaMask nicht installiert. Bitte installieren Sie MetaMask.', 'error');
-		window.open('https://metamask.io/download/', '_blank');
+	// Check if MetaMask is installed
+	if(!window.ethereum) {
+		showNotification('⚠️ MetaMask not installed - Please install the browser extension', 'error');
 		return;
 	}
 	
 	try {
-		// Request account access
+		// Request account access - this opens MetaMask extension popup
 		const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
 		if(accounts && accounts.length > 0) {
 			const address = accounts[0];
@@ -1227,9 +1227,29 @@ function renderWalletPositions(data){
 					<div>${leftCol || '<div class="muted">No supply positions</div>'}</div>
 					<div>${rightCol || '<div class="muted">No borrow positions</div>'}</div>
 				</div>`;
-				const totals = pr.totals || {supplied_usd:0, borrowed_usd:0, net_usd:0};
+				const totals = pr.totals || {supplied_usd:0, borrowed_usd:0, net_usd:0, health_factor: null};
+				
+				// Health Factor Badge mit Farbe
+				let hfBadge = '';
+				if(totals.health_factor !== null && totals.health_factor !== undefined) {
+					const hf = totals.health_factor;
+					let hfColor = '#4ade80'; // Green
+					let hfStatus = 'Safe';
+					if(hf < 1.1) {
+						hfColor = '#f43f5e'; // Red - critical
+						hfStatus = 'CRITICAL';
+					} else if(hf < 1.3) {
+						hfColor = '#fb923c'; // Orange - warning
+						hfStatus = 'Warning';
+					} else if(hf < 2.0) {
+						hfColor = '#fbbf24'; // Yellow - caution
+						hfStatus = 'Caution';
+					}
+					hfBadge = ` · <span style="color:${hfColor};font-weight:600;">Health Factor: ${hf.toFixed(2)}</span> <span class="muted">(${hfStatus})</span>`;
+				}
+				
 				parts.push(tableHtml);
-				parts.push(`<div class="muted" style="margin-top:8px">Summe · Supplied: ${formatUSD(totals.supplied_usd)} · Borrowed: ${formatUSD(totals.borrowed_usd)}</div>`);
+				parts.push(`<div class="muted" style="margin-top:8px">Summe · Supplied: ${formatUSD(totals.supplied_usd)} · Borrowed: ${formatUSD(totals.borrowed_usd)}${hfBadge}</div>`);
 		}
 		parts.push('</div>');
 	}
