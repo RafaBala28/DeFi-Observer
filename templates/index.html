@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeFi Observer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+                box-shadow: 0 0 8px #4ade80;
+            }
+            50% {
+                opacity: 0.6;
+                box-shadow: 0 0 16px #4ade80;
+            }
+        }
+    </style>
+    <!-- Chart.js and date adapter -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-left">
+                <div id="eth-header" class="eth-badge">
+                    <div class="loading"><div class="spinner"></div>Loading Network…</div>
+                </div>
+            </div>
+            <div class="header-center">
+                <h1>DeFi Observer</h1>
+                <p>Live On-Chain Data from Uniswap V2, V3 & Aave V3</p>
+            </div>
+            <div class="header-right">
+                <button id="themeToggle" class="toggle-btn" title="Toggle theme" aria-label="Toggle theme">🌓</button>
+                <button id="rpcStatsBtn" class="btn" onclick="showRPCStats()" title="View RPC Performance Statistics">
+                    <span class="status-dot" id="rpcStatusDot"></span>
+                    RPC Stats
+                </button>
+                <button id="walletConnectBtn" class="btn btn-primary" onclick="connectWallet()" title="Connect MetaMask Wallet">
+                    <span id="walletBtnText">🦊 Connect Wallet</span>
+                </button>
+            </div>
+        </header>
+
+        <div class="dashboard">
+            <!-- ETH Preis & Liquidationen Card (moved to top) -->
+            <div class="card" id="compare-card">
+                <div class="card-header" style="gap:12px;">
+                    <div class="card-title">
+                        <h2>ETH Price & Liquidations</h2>
+                        <div class="subtitle" id="chartSubtitle">Correlation over time</div>
+                    </div>
+                    <select id="historyRangeSelect" class="liq-select" onchange="changeHistoryRange()" style="max-width:180px;">
+                        <option value="1">Last hour</option>
+                        <option value="6">Last 6 hours</option>
+                        <option value="24" selected>Last 24 hours</option>
+                        <option value="168">Last 7 days</option>
+                        <option value="720">Last 30 days</option>
+                    </select>
+                    <div id="compareTimestamp" class="muted" style="margin-left:auto; min-width:170px; text-align:right">&nbsp;</div>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-frame">
+                        <div id="compareEmpty" class="chart-empty">Loading historical data…</div>
+                        <canvas id="compareChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Aave V3 Liquidations Card (moved to top) -->
+            <div class="card" id="liquidations-card">
+                <div class="card-header" style="gap:12px;">
+                    <div class="card-title">
+                        <svg class="protocol-logo" viewBox="0 0 266 139" xmlns="http://www.w3.org/2000/svg"><path d="M97.5418 138.533C112.461 138.533 124.556 126.438 124.556 111.518C124.556 96.5987 112.461 84.5039 97.5418 84.5039C82.6221 84.5039 70.5273 96.5987 70.5273 111.518C70.5273 126.438 82.6221 138.533 97.5418 138.533Z" fill="#fff"/><path d="M168.149 138.533C183.069 138.533 195.164 126.438 195.164 111.518C195.164 96.5987 183.069 84.5039 168.149 84.5039C153.23 84.5039 141.135 96.5987 141.135 111.518C141.135 126.438 153.23 138.533 168.149 138.533Z" fill="#fff"/><path d="M132.8 0C59.4497 0 -0.0191954 60.6017 4.64786e-06 135.335H33.9264C33.9264 79.3281 77.8433 33.92 132.8 33.92C187.757 33.92 231.674 79.3281 231.674 135.335H265.6C265.613 60.6017 206.144 0 132.8 0Z" fill="#fff"/></svg>
+                        <div>
+                            <h2>Aave V3</h2>
+                            <div class="subtitle">Liquidations</div>
+                        </div>
+                    </div>
+                    <select id="liqTimeFilter" class="liq-select" onchange="changeLiqTimeFilter()" style="max-width:180px;">
+                        <option value="all" selected>All</option>
+                        <option value="100">Last 100</option>
+                        <option value="1">Last 1 hour</option>
+                        <option value="6">Last 6 hours</option>
+                        <option value="24">Last 24 hours</option>
+                        <option value="168">Last 7 days</option>
+                        <option value="720">Last 30 days</option>
+                    </select>
+                    <button id="liqDownloadBtn" class="btn" onclick="downloadLiquidationsCSV()" title="Download as CSV">.csv</button>
+                </div>
+                <div id="liquidations-content" class="asset-list"><div class="loading"><div class="spinner"></div>Loading liquidations…</div></div>
+                <div id="liquidationsSummary" class="muted" style="padding:12px 18px">
+                    <span id="liqCount">&nbsp;</span>
+                </div>
+            </div>
+
+            <!-- RPC Stats Modal (initially hidden) -->
+            <div id="rpcStatsModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; padding:20px; overflow:auto;">
+                <div style="max-width:1200px; margin:40px auto; background:var(--card-bg); border-radius:12px; padding:24px; position:relative;">
+                    <button onclick="closeRPCStats()" style="position:absolute; top:16px; right:16px; background:transparent; border:none; color:var(--text-primary); font-size:24px; cursor:pointer;">&times;</button>
+                    <h2 style="margin:0 0 20px 0; color:var(--text-primary);">RPC Provider Performance Statistics</h2>
+                    <div id="rpcStatsContent" style="color:var(--text-primary);">
+                        <div class="loading"><div class="spinner"></div>Loading statistics...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DeFi Positionen - Unified Card -->
+            <div class="card" id="wallet-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <h2>DeFi Positions</h2>
+                        <div class="subtitle">Analyze all positions</div>
+                    </div>
+                </div>
+                
+                <!-- Protocol selector removed: simplified UI -->
+                
+                <!-- Input Section -->
+                <div class="wallet-input-row">
+                    <input id="walletInput" class="input" type="text" placeholder="0x… Enter wallet address" />
+                    <button id="walletAnalyzeBtn" class="btn btn-primary" type="button" onclick="analyzeAllPositions()">Analyze</button>
+                </div>
+                
+                <div id="walletError" class="form-error" style="display:none"></div>
+                <div id="walletLoading" style="display:none; padding:20px; text-align:center;">
+                    <div class="loading"><div class="spinner"></div>Analyzing positions...</div>
+                </div>
+                <div id="walletResults" class="asset-list" style="margin-top:12px;"></div>
+            </div>
+
+            <!-- Connected Wallet Positions (shown when MetaMask connected) -->
+            <div id="connectedWalletPositions" style="display:none;"></div>
+
+            <!-- Aave V3 Reserves Card -->
+            <div class="card" id="aave-reserves-card" data-live="true">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg class="protocol-logo" viewBox="0 0 266 139" xmlns="http://www.w3.org/2000/svg"><path d="M97.5418 138.533C112.461 138.533 124.556 126.438 124.556 111.518C124.556 96.5987 112.461 84.5039 97.5418 84.5039C82.6221 84.5039 70.5273 96.5987 70.5273 111.518C70.5273 126.438 82.6221 138.533 97.5418 138.533Z" fill="#fff"/><path d="M168.149 138.533C183.069 138.533 195.164 126.438 195.164 111.518C195.164 96.5987 183.069 84.5039 168.149 84.5039C153.23 84.5039 141.135 96.5987 141.135 111.518C141.135 126.438 153.23 138.533 168.149 138.533Z" fill="#fff"/><path d="M132.8 0C59.4497 0 -0.0191954 60.6017 4.64786e-06 135.335H33.9264C33.9264 79.3281 77.8433 33.92 132.8 33.92C187.757 33.92 231.674 79.3281 231.674 135.335H265.6C265.613 60.6017 206.144 0 132.8 0Z" fill="#fff"/></svg>
+                        <div>
+                            <h2>Aave V3 Mainnet</h2>
+                            <div class="subtitle">Pool Reserves</div>
+                        </div>
+                    </div>
+                </div>
+                <div id="aave-reserves-content"><div class="loading"><div class="spinner"></div>Loading pool data…</div></div>
+            </div>
+
+            
+        </div>
+    </div>
+
+    <script>
+    // Check RPC provider status and update indicator
+    async function updateRPCStatus() {
+        try {
+            const response = await fetch('/api/rpc_stats');
+            const data = await response.json();
+            const dot = document.getElementById('rpcStatusDot');
+            
+            if (!dot) return;
+            
+            // Check if any provider has successful requests
+            const hasActiveProvider = data.providers && data.providers.some(p => p.success > 0);
+            const allDown = data.total_success === 0 && data.total_requests > 0;
+            
+            if (allDown) {
+                dot.className = 'status-dot offline';
+            } else {
+                dot.className = 'status-dot online';
+            }
+        } catch (error) {
+            // On error, assume offline
+            const dot = document.getElementById('rpcStatusDot');
+            if (dot) dot.className = 'status-dot offline';
+        }
+    }
+    
+    // Update RPC status every 10 seconds
+    updateRPCStatus(); // Initial check
+    setInterval(updateRPCStatus, 10000);
+    
+    // RPC Stats Functions
+    function showRPCStats() {
+        document.getElementById('rpcStatsModal').style.display = 'block';
+        loadRPCStats();
+        
+        // Auto-refresh stats every 5 seconds
+        if (window.rpcStatsRefreshInterval) clearInterval(window.rpcStatsRefreshInterval);
+        window.rpcStatsRefreshInterval = setInterval(loadRPCStats, 5000);
+    }
+    
+    function closeRPCStats() {
+        // Clear uptime interval
+        if (window.uptimeInterval) {
+            clearInterval(window.uptimeInterval);
+            window.uptimeInterval = null;
+        }
+        
+        // Clear stats refresh interval
+        if (window.rpcStatsRefreshInterval) {
+            clearInterval(window.rpcStatsRefreshInterval);
+            window.rpcStatsRefreshInterval = null;
+        }
+        
+        document.getElementById('rpcStatsModal').style.display = 'none';
+    }
+    
+    async function loadRPCStats() {
+        try {
+            const response = await fetch('/api/rpc_stats');
+            const data = await response.json();
+            
+            if (data.status === 'no_data') {
+                document.getElementById('rpcStatsContent').innerHTML = `
+                    <div style="text-align:center; padding:40px; color:var(--text-muted);">
+                        <p>${data.message}</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            if (data.status === 'error') {
+                document.getElementById('rpcStatsContent').innerHTML = `
+                    <div style="text-align:center; padding:40px; color:#f44;">
+                        <p>Error: ${data.message}</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Build table
+            // Store server start time for dynamic uptime
+            window.serverStartTime = Math.floor(Date.now() / 1000) - (data.uptime_seconds || 0);
+            
+            let html = `
+                <div style="margin-bottom:20px;">
+                    <strong>Server Uptime:</strong> <span id="uptime-display" style="color:#4ade80;">calculating...</span><br>
+                    <strong>Total Requests:</strong> ${data.total_requests.toLocaleString()} 
+                    (Success: ${data.total_success.toLocaleString()}, Errors: ${data.total_errors.toLocaleString()})
+                </div>
+                <table style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr style="border-bottom:2px solid var(--border-color); text-align:left;">
+                            <th style="padding:12px;">Rank</th>
+                            <th style="padding:12px;">Provider</th>
+                            <th style="padding:12px;">Success Rate</th>
+                            <th style="padding:12px;">Avg Response Time</th>
+                            <th style="padding:12px;">Total Requests</th>
+                            <th style="padding:12px;">Errors</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            data.providers.forEach((p, i) => {
+                const successRate = p.success_rate.toFixed(1);
+                const rateColor = successRate >= 95 ? '#4ade80' : successRate >= 80 ? '#fbbf24' : '#f87171';
+                const timeColor = p.avg_response_time < 0.2 ? '#4ade80' : p.avg_response_time < 0.5 ? '#fbbf24' : '#f87171';
+                
+                // Check if this is the active provider
+                const isActive = data.active_provider && p.url === data.active_provider;
+                const activeIndicator = isActive ? `
+                    <span style="display:inline-block; width:8px; height:8px; background:#4ade80; border-radius:50%; margin-right:8px; box-shadow:0 0 8px #4ade80; animation:pulse 2s ease-in-out infinite;"></span>
+                ` : '';
+                
+                html += `
+                    <tr style="border-bottom:1px solid var(--border-color); ${isActive ? 'background:rgba(74, 222, 128, 0.1);' : ''}">
+                        <td style="padding:12px; font-weight:bold;">#${i+1}</td>
+                        <td style="padding:12px; font-family:monospace; font-size:0.9em;">
+                            ${activeIndicator}${p.provider}
+                        </td>
+                        <td style="padding:12px;">
+                            <span style="color:${rateColor}; font-weight:bold;">${successRate}%</span>
+                            <span style="color:var(--text-muted); font-size:0.9em;"> (${p.success}/${p.total})</span>
+                        </td>
+                        <td style="padding:12px;">
+                            <span style="color:${timeColor}; font-weight:bold;">${p.total > 0 ? (p.avg_response_time * 1000).toFixed(0) + 'ms' : '-'}</span>
+                        </td>
+                        <td style="padding:12px; color:var(--text-muted);">${p.total.toLocaleString()}</td>
+                        <td style="padding:12px; color:#f87171;">${p.errors}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                    </tbody>
+                </table>
+                <div style="margin-top:20px; padding:16px; background:var(--bg-secondary); border-radius:8px; font-size:0.9em; color:var(--text-muted);">
+                    <strong>Legend:</strong><br>
+                    • Success Rate: Percentage of successful requests<br>
+                    • Avg Response Time: Average time for eth_getLogs calls<br>
+                    • Stats update in real-time as scanner runs
+                </div>
+            `;
+            
+            document.getElementById('rpcStatsContent').innerHTML = html;
+            
+            // Start dynamic uptime counter
+            if (window.uptimeInterval) clearInterval(window.uptimeInterval);
+            
+            function updateUptime() {
+                if (!window.serverStartTime) return;
+                const uptimeSeconds = Math.floor(Date.now() / 1000) - window.serverStartTime;
+                const days = Math.floor(uptimeSeconds / 86400);
+                const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+                const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+                const seconds = uptimeSeconds % 60;
+                
+                let uptimeStr = '';
+                if (days > 0) uptimeStr += `${days}d `;
+                if (hours > 0 || days > 0) uptimeStr += `${hours}h `;
+                if (minutes > 0 || hours > 0 || days > 0) uptimeStr += `${minutes}m `;
+                uptimeStr += `${seconds}s`;
+                
+                const elem = document.getElementById('uptime-display');
+                if (elem) elem.textContent = uptimeStr;
+            }
+            
+            updateUptime(); // Initial update
+            window.uptimeInterval = setInterval(updateUptime, 1000); // Update every second
+        } catch (error) {
+            // Clear interval on error too
+            if (window.uptimeInterval) {
+                clearInterval(window.uptimeInterval);
+                window.uptimeInterval = null;
+            }
+            document.getElementById('rpcStatsContent').innerHTML = `
+                <div style="text-align:center; padding:40px; color:#f44;">
+                    <p>Failed to load RPC stats: ${error.message}</p>
+                </div>
+            `;
+        }
+    }
+    </script>
+
+    <!-- Liquidation Details Modal -->
+    <div id="liqModal" class="modal-overlay" onclick="if(event.target===this) closeLiqModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Liquidation Details</div>
+                <button class="modal-close" onclick="closeLiqModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="liqModalBody"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js', v=build_ts) }}"></script>
+</body>
+</html>

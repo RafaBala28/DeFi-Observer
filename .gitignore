@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+
+# Data and logs
+/data/
+*.log
+
+# Env files
+.env
+*.env
+
+# Byte-compiled
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Temporary and backup files
+*~
+*.tmp
+*.temp
+*.swp
+*.swo
+data/archived_cleanup/
+data/archived_cleanup/
+data/archived_cleanup/
