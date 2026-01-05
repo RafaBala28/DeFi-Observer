@@ -172,55 +172,6 @@ python .\tools\aave_v3_liquidations_scanner.py
 3. **Enriched** - collateralSymbol, debtSymbol, collateral_price_usd_at_block, debt_price_usd_at_block, collateral_value_usd, debt_value_usd
 4. **Transaction** - tx, block_builder, gas_used, gas_price_gwei
 
-## Project Structure
-
-```
-DeFi_Observer/
-├── app.py                    # Flask app, all API routes, background scanner
-├── config.py                 # RPC URLs, contract addresses, chain configs
-├── web3_utils.py             # Web3 connection with RPC rotation
-│
-├── aave_data.py              # Aave V3 pool data fetching
-├── aave_risk_monitor.py      # Aave risk metrics (LTV, thresholds)
-├── uniswap_data.py           # Uniswap V2 pool data
-├── uniswap_v3_data.py        # Uniswap V3 pool list and TVL
-├── uniswap_extended.py       # Extended V3 data (volume, ticks)
-├── wallet_positions.py       # Wallet position analysis
-├── eth_network_stats.py      # Block time, gas prices
-│
-├── chainlink_price_utils.py  # Chainlink oracle price fetching
-├── eth_price_tracker.py      # ETH price history tracking
-├── metrics_store.py          # Time series data storage
-├── master_csv_manager.py     # CSV lifecycle management
-├── abis.py                   # Smart contract ABIs
-│
-├── tools/
-│   ├── aave_v3_liquidations_scanner.py  # Standalone scanner (also auto-started)
-│   └── csv_utils.py                     # CSV helper functions
-│
-├── scripts/
-│   └── build_daily_eth_chainlink_dataset.py  # ETH daily dataset builder
-│
-├── templates/
-│   └── index.html            # Dashboard UI
-├── static/
-│   ├── css/styles.css        # Styles
-│   └── js/app.js             # Frontend JavaScript
-│
-├── data/                     # Generated data (gitignored)
-│   ├── liquidations_master.csv
-│   ├── scan_status.json
-│   ├── scanner_checkpoint.json
-│   ├── eth_price_cache.json
-│   ├── capo_params.json
-│   └── reports/
-│       └── price_feeds_test_report.json
-│
-├── .env.example              # Environment variable template
-├── requirements.txt          # Python dependencies
-├── README.md                 # This file
-└── LICENSE                   # MIT License
-```
 
 ## Liquidations CSV - Data Structure
 
